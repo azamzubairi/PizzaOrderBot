@@ -1,62 +1,240 @@
+from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
 from langchain_ollama import ChatOllama
-from pydantic import BaseModel, Field
+from datetime import datetime
+import json
+import re
 
-# Initialize the language model with the Llama model
-llm = ChatOllama(model="llama3.1", temperature=0)
+class PizzaOrderChatbot:
+    def __init__(self):
+        # Initialize the chat model
+        self.llm = ChatOllama(model="llama3.1", temperature=0.2)
+        
+        # Load the system prompt
+        self.system_prompt = """You are PizzaPal, a friendly and professional pizza order call agent for "Delicious Slices Pizzeria". Your role is to process customer orders efficiently while maintaining a warm, helpful demeanor. Follow these guidelines for every interaction:
 
-# Define the pizza order model with Pydantic
-class PizzaOrder(BaseModel):
-    flavor: str = Field(default=None, description="This is the flavor of the pizza.")
-    size: str = Field(default=None, description="This is the size of the pizza.")
-    extra_toppings: str = Field(default=None, description="Is there any extra toppings")
+        GREETING:
+        - Always start with a warm greeting including the time of day (morning/afternoon/evening)
+        - Introduce yourself and the pizzeria
+        - Ask how you can help the customer
+        Example: "Good [time of day]! This is PizzaPal from Delicious Slices Pizzeria. How may I help you today?"
 
-# Function to extract fields safely from the response
-def extract_order_details(response):
-    # Initialize an empty PizzaOrder object
-    pizza_order = PizzaOrder()
+        ORDER PROCESSING RULES:
 
-    # Extract fields from the response, if available
-    if response.flavor:
-        pizza_order.flavor = response.flavor
-    if response.size:
-        pizza_order.size = response.size
-    if response.extra_toppings:
-        pizza_order.extra_toppings = response.extra_toppings
-    
-    return pizza_order
+        1. Available Options:
+        - Sizes: Small ($10), Medium ($14), Large ($18)
+        - Flavors: Margherita, Pepperoni, BBQ Chicken, Veggie
+        - Extra toppings ($2 each): Olives, Mushrooms, Onions, Extra Cheese
+        - Crust types: Thin, Regular, Thick
 
-# Function to greet the user, ask for the order, and handle missing information
-def pizza_chatbot():
-    # Greet the user
-    print("Hello! Welcome to PizzaBot. How can I assist you today?")
-    
-    # Ask for the initial order input
-    order_input = input("Please tell me your pizza order: ")
+        2. Data Collection:
+        - Listen for and extract order details from customer's initial request
+        - For any missing information, ask politely with specific options
+        - Validate each piece of information against available options
+        - If multiple pizzas are ordered, process them one at a time
 
-    # Process the input and ask for missing values
-    order = llm.with_structured_output(PizzaOrder)
-    response = order.invoke(order_input)
+        3. Required Fields:
+        - Size
+        - Flavor
+        - Crust type
+        - Extra toppings (if none, confirm "no extra toppings")
 
-    # Extract the parsed order fields from the response
-    pizza_order = extract_order_details(response)
+        CONVERSATION FLOW:
 
-    # Ask for missing values if needed
-    if not pizza_order.flavor:
-        pizza_order.flavor = input("What flavor would you like? ")
+        1. Initial Order Analysis:
+        - Parse customer's initial order request
+        - Acknowledge what was understood
+        - Example: "I understand you'd like a [size] [flavor] pizza. Let me help you complete that order."
 
-    if not pizza_order.size:
-        pizza_order.size = input("What size would you like? (small, medium, large) ")
+        2. Missing Information Collection:
+        - Ask for missing fields one at a time
+        - Present options clearly
+        - Example: "What size would you like for your pizza? We have Small ($10), Medium ($14), or Large ($18)."
 
-    if not pizza_order.extra_toppings:
-        pizza_order.extra_toppings = input("Would you like any extra toppings? ")
+        3. Validation Process:
+        - Confirm each piece of information is valid
+        - If invalid, explain why and present correct options
+        - Example: "I apologize, but we don't offer that size. Our available sizes are..."
 
-    # Confirm the order
-    print(f"Confirming your order: {pizza_order.size} {pizza_order.flavor} pizza with {pizza_order.extra_toppings}.")
+        4. Order Confirmation:
+        - Summarize the complete order with all details
+        - State the total price including any extra toppings
+        - Ask for confirmation
+        - Example: "Let me confirm your order: One Large Margherita pizza with extra cheese on a thin crust. That comes to $20. Would you like to proceed with this order?"
 
-    # Goodbye message
-    print("Thank you for your order! Goodbye.")
+        PERSONALITY TRAITS:
+        - Friendly and patient
+        - Clear and concise in communication
+        - Professional but warm
+        - Helpful in making suggestions
+        - Apologetic when clarification is needed
 
-    return pizza_order
+        ERROR HANDLING:
+        - If customer provides unclear information, ask for clarification politely
+        - If customer seems confused, offer to explain options
+        - If customer changes their mind, accommodate changes cheerfully
 
-# Example call to the chatbot
-pizza_chatbot()
+        CLOSING THE ORDER:
+        1. After confirmation:
+        - Provide order summary
+        - State estimated delivery/pickup time
+        - Thank the customer
+        - End with a friendly closing
+        2. Example closing: "Thank you for choosing Delicious Slices Pizzeria! Your [order details] will be ready for [delivery/pickup] in approximately 30 minutes. Have a wonderful [time of day]!"
+
+        SPECIAL INSTRUCTIONS:
+        - Always calculate and state the total price
+        - Mention any ongoing promotions when relevant
+        - Ask about delivery or pickup preference
+        - Collect delivery address if needed
+        - Handle special requests politely, stating clearly if they can't be accommodated
+
+        DATA STRUCTURE:
+        For each order, collect and validate:
+        ```json
+        {
+            "order_id": "unique_id",
+            "items": [{
+                "size": "string",
+                "flavor": "string",
+                "crust_type": "string",
+                "extra_toppings": ["string"],
+                "price": "float"
+            }],
+            "delivery_type": "delivery/pickup",
+            "delivery_address": "string (if delivery)",
+            "total_price": "float",
+            "estimated_time": "string"
+        }
+        ```
+
+        RESPONSE FORMAT:
+        Always structure your thinking as follows:
+        1. Parse customer input
+        2. Identify missing or invalid information
+        3. Formulate appropriate response
+        4. Maintain context of the entire order
+
+        Remember: Your goal is to ensure a complete, accurate order while providing an excellent customer experience. Stay in character as a friendly pizza order agent throughout the entire interaction."""  # Insert the full system prompt we created
+        
+        # Initialize conversation history
+        self.conversation_history = [
+            SystemMessage(content=self.system_prompt)
+        ]
+        
+        # Initialize order state
+        self.current_order = {
+            "items": [],
+            "delivery_type": None,
+            "delivery_address": None,
+            "total_price": 0,
+            "estimated_time": None
+        }
+        
+        # Price configuration
+        self.prices = {
+            "sizes": {"Small": 10, "Medium": 14, "Large": 18},
+            "toppings": {"Olives": 2, "Mushrooms": 2, "Onions": 2, "Extra Cheese": 2}
+        }
+
+    def get_time_of_day(self):
+        hour = datetime.now().hour
+        if 5 <= hour < 12:
+            return "morning"
+        elif 12 <= hour < 17:
+            return "afternoon"
+        else:
+            return "evening"
+
+    def calculate_price(self, size, toppings):
+        base_price = self.prices["sizes"].get(size, 0)
+        toppings_price = sum(self.prices["toppings"].get(topping, 0) for topping in toppings)
+        return base_price + toppings_price
+
+    def extract_order_details(self, response_text):
+        """Extract structured order details from LLM response"""
+        try:
+            # Look for JSON-like structure in the response
+            json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
+            if json_match:
+                order_json = json.loads(json_match.group())
+                return order_json
+            return None
+        except:
+            return None
+
+    def process_message(self, user_input):
+        # Add user message to history
+        self.conversation_history.append(HumanMessage(content=user_input))
+        
+        # Get response from LLM
+        response = self.llm.invoke(self.conversation_history)
+        
+        # Add AI response to history
+        self.conversation_history.append(AIMessage(content=response.content))
+        
+        # Extract order details if present
+        order_details = self.extract_order_details(response.content)
+        if order_details:
+            self.update_order_state(order_details)
+        
+        return response.content
+
+    def update_order_state(self, order_details):
+        """Update the current order state with new information"""
+        if 'items' in order_details:
+            for item in order_details['items']:
+                if item not in self.current_order['items']:
+                    self.current_order['items'].append(item)
+                    
+        if 'delivery_type' in order_details:
+            self.current_order['delivery_type'] = order_details['delivery_type']
+            
+        if 'delivery_address' in order_details:
+            self.current_order['delivery_address'] = order_details['delivery_address']
+            
+        # Recalculate total price
+        total_price = 0
+        for item in self.current_order['items']:
+            size = item.get('size')
+            toppings = item.get('extra_toppings', [])
+            total_price += self.calculate_price(size, toppings)
+        
+        self.current_order['total_price'] = total_price
+
+    def start_conversation(self):
+        """Start the pizza ordering conversation"""
+        # Initial greeting
+        time_of_day = self.get_time_of_day()
+        initial_greeting = f"Good {time_of_day}! This is PizzaPal from Delicious Slices Pizzeria. How may I help you today?"
+        print("🤖 " + initial_greeting)
+        
+        while True:
+            # Get user input
+            user_input = input("👤 ").strip()
+            
+            # Check for exit conditions
+            if user_input.lower() in ['exit', 'quit', 'bye', 'goodbye']:
+                print("🤖 Thank you for choosing Delicious Slices Pizzeria! Have a wonderful day! 👋")
+                break
+            
+            # Process the message and get response
+            response = self.process_message(user_input)
+            
+            # Print bot response
+            print("🤖 " + response)
+            
+            # Check if order is complete and confirmed
+            if "order confirmed" in response.lower() or "thank you for your order" in response.lower():
+                break
+
+def main():
+    # Create and start the chatbot
+    chatbot = PizzaOrderChatbot()
+    try:
+        chatbot.start_conversation()
+    except Exception as e:
+        print(f"\n❌ An error occurred: {str(e)}")
+        print("We apologize for the inconvenience. Please try again or contact support.")
+
+if __name__ == "__main__":
+    main()
