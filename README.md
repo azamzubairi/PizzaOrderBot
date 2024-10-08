@@ -43,7 +43,7 @@ This is a Python chatbot for taking pizza orders using LangChain and the llama l
     pip install -r requirements.txt
     ```
 
-## Running the Chatbot
+## Running the Chatbot in the Terminal
 
 To start the chatbot:
 
@@ -68,10 +68,41 @@ To start the chatbot:
 ```bash
 $ python chatbot.py
 
-Hello! Welcome to PizzaBot. How can I assist you today?
-Please tell me your pizza order: I want a pizza with extra mushrooms
-What flavor would you like? Pepperoni
-What size would you like? (small, medium, large) Large
-Confirming your order: Large Pepperoni pizza with extra mushrooms.
-Thank you for your order! Goodbye.
+🤖 Good evening! This is PizzaPal from Delicious Slices Pizzeria. How may I help you today?
+
+👤 I'd like to order a large pepperoni pizza with extra cheese
+
+🤖 I understand you'd like a Large Pepperoni pizza with Extra Cheese. Would you like Thin, 
+Regular, or Thick crust?
+
+👤 Thin crust please
+
+🤖 Great choice! Let me confirm your order:
+- Large Pepperoni pizza
+- Thin crust
+- Extra Cheese (+$2)
+Total: $20
+
+Would you like this for delivery or pickup?
+
+👤 Delivery please
+
+🤖 Could you please provide your delivery address?
+
+[Conversation continues...]
 ```
+
+## Running with UI
+
+To start the chatbot UI:
+
+1. Run the Python script in your terminal:
+
+    ```bash
+    mesop main.py
+    ```
+
+2. Navigate to `localhost:32123/chat`
+
+
+![Chat UI](image.png)
