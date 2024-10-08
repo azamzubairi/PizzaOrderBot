@@ -96,7 +96,7 @@ Would you like this for delivery or pickup?
 
 To start the chatbot UI:
 
-1. Run the Python script in your terminal:
+1. Run the following command in your terminal:
 
     ```bash
     mesop main.py
